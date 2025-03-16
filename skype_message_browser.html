@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Browse Skype Messages</title>
+  <style>
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f2f2f2;
+    }
+    .header {
+      background-color: #0078ca;
+      color: white;
+      padding: 1rem;
+      text-align: center;
+    }
+    .container {
+      display: flex;
+      flex-direction: row;
+    }
+    .sidebar {
+      width: 30%;
+      background-color: #fff;
+      padding: 1rem;
+      border-right: 1px solid #ccc;
+      /* Fixed height for scrolling */
+      height: calc(100vh - 120px);
+      overflow-y: auto;
+    }
+    .content {
+      width: 70%;
+      padding: 1rem;
+      /* Fixed height for scrolling */
+      height: calc(100vh - 120px);
+      overflow-y: auto;
+    }
+    ul {
+      list-style-type: none;
+      padding: 0;
+    }
+    li {
+      margin-bottom: 0.5rem;
+    }
+    .message {
+      background-color: #fff;
+      margin: 0.5rem 0;
+      padding: 0.5rem;
+      border-radius: 5px;
+      position: relative;
+      border: 1px solid #ccc;
+    }
+    .message .meta {
+      font-size: 0.8rem;
+      color: #626f82;
+      margin-bottom: 0.25rem;
+    }
+    .delete-btn, .delete-conv-btn-sidebar {
+      position: absolute;
+      top: 5px;
+      background-color: red;
+      color: #fff;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      padding: 2px 5px;
+    }
+    .delete-btn {
+      right: 5px;
+    }
+    .conversation-item {
+      position: relative;
+      padding-right: 120px; /* space for delete button */
+    }
+    .delete-conv-btn-sidebar {
+      right: 5px;
+      top: 5px;
+      position: absolute;
+    }
+    #progress {
+      display: none;
+      margin-left: 1rem;
+    }
+    fieldset {
+      margin: 1rem 0;
+      padding: 1rem;
+      background-color: #fff;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    .sort-container {
+      margin-bottom: 1rem;
+    }
+    .file-loader {
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Edit Skype Messages</h1>
+  </div>
+  <div class="container">
+    <div class="sidebar">
+      <!-- File loader placed in the sidebar -->
+      <div class="file-loader">
+        <fieldset>
+          <legend>Load Skype Conversation JSON</legend>
+          <input type="file" id="fileinput" accept=".json">
+          <input type="button" id="btnLoad" value="Load">
+          <span id="progress">Processing...</span>
+        </fieldset>
+      </div>
+      <div class="sort-container">
+        <label for="sort-options">Sort by: </label>
+        <select id="sort-options">
+          <option value="alphabetical">Alphabetical</option>
+          <option value="totalMessages">Total Messages</option>
+        </select>
+      </div>
+      <h2>Conversations</h2>
+      <ul id="conversations"></ul>
+    </div>
+    <div class="content">
+      <h2 id="conversation-header">Select a conversation</h2>
+      <ul id="messages"></ul>
+    </div>
+  </div>
+  
+  <script>
+    (function(){
+      "use strict";
+      var conversationsData = [];
+
+      // Replace HTML entities for proper display.
+      function decodeHTML(str) {
+        return str.replace(/&apos;/g, "'")
+                  .replace(/&amp;/g, "&")
+                  .replace(/&lt;/g, "<")
+                  .replace(/&gt;/g, ">");
+      }
+      
+      // Remove the "8:" prefix from Skype IDs.
+      function stripPrefix(id) {
+        return id.replace(/^8:/, '');
+      }
+      
+      // Get a human-readable name for a conversation.
+      function getConversationName(conv) {
+        return conv.displayName ? decodeHTML(conv.displayName) : stripPrefix(conv.id);
+      }
+      
+      // Render the conversation list in the sidebar with sorting.
+      function renderConversations() {
+        var sortOption = document.getElementById('sort-options').value;
+        var sortedData = conversationsData.slice();
+        if (sortOption === "alphabetical") {
+          sortedData.sort(function(a, b) {
+            var nameA = getConversationName(a).toLowerCase();
+            var nameB = getConversationName(b).toLowerCase();
+            return nameA.localeCompare(nameB);
+          });
+        } else if (sortOption === "totalMessages") {
+          sortedData.sort(function(a, b) {
+            return b.MessageList.length - a.MessageList.length;
+          });
+        }
+        var convList = document.getElementById('conversations');
+        convList.innerHTML = "";
+        sortedData.forEach(function(conv) {
+          // Find the original index in the unsorted array.
+          var originalIndex = conversationsData.indexOf(conv);
+          var li = document.createElement('li');
+          li.className = "conversation-item";
+          
+          // Conversation link to view messages.
+          var a = document.createElement('a');
+          a.href = "#";
+          a.textContent = getConversationName(conv) + " (" + conv.MessageList.length + " messages)";
+          a.setAttribute("data-index", originalIndex);
+          a.addEventListener("click", function(e) {
+            e.preventDefault();
+            renderMessages(originalIndex);
+          });
+          li.appendChild(a);
+          
+          // Delete conversation button.
+          var delConvBtn = document.createElement('button');
+          delConvBtn.className = "delete-conv-btn-sidebar";
+          delConvBtn.textContent = "Delete";
+          delConvBtn.addEventListener("click", function(e) {
+            e.preventDefault();
+            deleteConversation(originalIndex);
+          });
+          li.appendChild(delConvBtn);
+          
+          convList.appendChild(li);
+        });
+      }
+      
+      // Render messages for the selected conversation.
+      function renderMessages(convIndex) {
+        var conv = conversationsData[convIndex];
+        document.getElementById('conversation-header').textContent = getConversationName(conv);
+        var messagesList = document.getElementById('messages');
+        messagesList.innerHTML = "";
+        conv.MessageList.forEach(function(msg, msgIndex) {
+          if (msg.content && msg.content.trim() !== "") {
+            var li = document.createElement('li');
+            li.className = "message";
+            li.setAttribute("data-msg-index", msgIndex);
+            li.setAttribute("data-conv-index", convIndex);
+            
+            // Meta information: sender and timestamp.
+            var metaDiv = document.createElement('div');
+            metaDiv.className = "meta";
+            metaDiv.textContent = stripPrefix(msg.from) + " - " + new Date(msg.originalarrivaltime).toLocaleString();
+            li.appendChild(metaDiv);
+            
+            // Message content.
+            var contentDiv = document.createElement('div');
+            contentDiv.textContent = decodeHTML(msg.content);
+            li.appendChild(contentDiv);
+            
+            // Delete individual message button.
+            var delBtn = document.createElement('button');
+            delBtn.className = "delete-btn";
+            delBtn.textContent = "Delete";
+            delBtn.addEventListener("click", function(e) {
+              e.preventDefault();
+              deleteMessage(convIndex, msgIndex);
+            });
+            li.appendChild(delBtn);
+            
+            messagesList.appendChild(li);
+          }
+        });
+      }
+      
+      // Delete a message from the conversation data and update the UI.
+      function deleteMessage(convIndex, msgIndex) {
+        if (confirm("Are you sure you want to delete this message?")) {
+          conversationsData[convIndex].MessageList.splice(msgIndex, 1);
+          renderMessages(convIndex);
+          renderConversations();
+        }
+      }
+      
+      // Delete an entire conversation group.
+      function deleteConversation(convIndex) {
+        if (confirm("Are you sure you want to delete this entire conversation?")) {
+          conversationsData.splice(convIndex, 1);
+          document.getElementById('messages').innerHTML = "";
+          document.getElementById('conversation-header').textContent = "Select a conversation";
+          renderConversations();
+        }
+      }
+      
+      // Load the JSON file and process its contents.
+      document.getElementById("btnLoad").addEventListener("click", function(){
+        var fileInput = document.getElementById("fileinput");
+        if (window.FileReader && fileInput && fileInput.files && fileInput.files[0]) {
+          var file = fileInput.files[0];
+          document.getElementById("progress").style.display = "inline";
+          var reader = new FileReader();
+          reader.onload = function(e) {
+            var result = e.target.result;
+            try {
+              var json = JSON.parse(result);
+              // Basic validation of the JSON structure.
+              if (json && json.userId && json.conversations && json.exportDate) {
+                // Filter out invalid or empty conversations.
+                conversationsData = json.conversations.filter(function(conv) {
+                  return conv.id && conv.id !== "ALL" && conv.MessageList && conv.MessageList.length;
+                });
+                renderConversations();
+                document.getElementById("progress").style.display = "none";
+              } else {
+                alert("Invalid file structure.");
+                document.getElementById("progress").style.display = "none";
+              }
+            } catch(err) {
+              alert("Error parsing JSON: " + err);
+              document.getElementById("progress").style.display = "none";
+            }
+          };
+          reader.readAsText(file, "utf8");
+        } else {
+          alert("File API not supported or no file selected.");
+        }
+      });
+      
+      // Listen for sort option changes.
+      document.getElementById('sort-options').addEventListener('change', function(){
+        renderConversations();
+      });
+    })();
+  </script>
+        <center> <a href="http://x.com/karljayg">@karljayg</a> </center>
+</body>
+</html>
