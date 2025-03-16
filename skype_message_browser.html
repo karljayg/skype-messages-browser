@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Browse Skype Messages</title>
+  <title>Edit Skype Messages</title>
   <style>
     body {
       font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
@@ -55,6 +55,12 @@
       font-size: 0.8rem;
       color: #626f82;
       margin-bottom: 0.25rem;
+    }
+    .conv-date {
+      display: block;
+      font-size: 0.8em;
+      color: #626f82;
+      margin-top: 0.25rem;
     }
     .delete-btn, .delete-conv-btn-sidebar {
       position: absolute;
@@ -118,6 +124,7 @@
         <select id="sort-options">
           <option value="alphabetical">Alphabetical</option>
           <option value="totalMessages">Total Messages</option>
+          <option value="date">Date</option>
         </select>
       </div>
       <h2>Conversations</h2>
@@ -152,6 +159,15 @@
         return conv.displayName ? decodeHTML(conv.displayName) : stripPrefix(conv.id);
       }
       
+      // Get the conversation date based on the last message's timestamp.
+      function getConversationDate(conv) {
+        if (conv.MessageList && conv.MessageList.length > 0) {
+          var lastMsg = conv.MessageList[conv.MessageList.length - 1];
+          return new Date(lastMsg.originalarrivaltime).toLocaleString();
+        }
+        return "";
+      }
+      
       // Render the conversation list in the sidebar with sorting.
       function renderConversations() {
         var sortOption = document.getElementById('sort-options').value;
@@ -165,6 +181,12 @@
         } else if (sortOption === "totalMessages") {
           sortedData.sort(function(a, b) {
             return b.MessageList.length - a.MessageList.length;
+          });
+        } else if (sortOption === "date") {
+          sortedData.sort(function(a, b) {
+            var dateA = new Date(a.MessageList[a.MessageList.length - 1].originalarrivaltime);
+            var dateB = new Date(b.MessageList[b.MessageList.length - 1].originalarrivaltime);
+            return dateB - dateA;
           });
         }
         var convList = document.getElementById('conversations');
@@ -185,6 +207,12 @@
             renderMessages(originalIndex);
           });
           li.appendChild(a);
+          
+          // Append the conversation date.
+          var dateSpan = document.createElement('span');
+          dateSpan.className = "conv-date";
+          dateSpan.textContent = "Last: " + getConversationDate(conv);
+          li.appendChild(dateSpan);
           
           // Delete conversation button.
           var delConvBtn = document.createElement('button');
@@ -298,6 +326,6 @@
       });
     })();
   </script>
-        <center> <a href="http://x.com/karljayg">@karljayg</a> </center>
+	<center> <a href="http://x.com/karljayg">@karljayg</a> </center>
 </body>
 </html>
